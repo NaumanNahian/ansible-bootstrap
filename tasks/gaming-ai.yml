@@ -1,0 +1,9 @@
+---
+# Specific tasks for gaming-ai
+
+- name: Create Games directory
+  become: no
+  ansible.builtin.file:
+    path: "~/Games"
+    state: directory
+    mode: '0755'

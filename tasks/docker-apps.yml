@@ -1,0 +1,44 @@
+---
+# Deploy and start Docker Compose stacks in /opt/docker
+
+- name: Create base docker directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /opt/docker
+    - /opt/docker/arcane
+    - /opt/docker/ollama-webui
+
+- name: Deploy Arcane Docker Compose configuration
+  ansible.builtin.template:
+    src: templates/arcane-compose.yml.j2
+    dest: /opt/docker/arcane/docker-compose.yml
+    owner: root
+    group: root
+    mode: '0644'
+  register: deploy_arcane
+
+- name: Deploy Ollama & Open WebUI Docker Compose configuration
+  ansible.builtin.template:
+    src: templates/ollama-webui-compose.yml.j2
+    dest: /opt/docker/ollama-webui/docker-compose.yml
+    owner: root
+    group: root
+    mode: '0644'
+  register: deploy_ollama
+
+- name: Start Arcane Docker Compose stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt/docker/arcane
+  changed_when: deploy_arcane.changed
+
+- name: Start Ollama & Open WebUI Docker Compose stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt/docker/ollama-webui
+  changed_when: deploy_ollama.changed

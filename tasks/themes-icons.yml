@@ -1,0 +1,530 @@
+---
+- name: Ensure theme/icon/cursor build and extraction dependencies are installed
+  ansible.builtin.apt:
+    name:
+      - git
+      - make
+      - inkscape
+      - x11-apps
+      - unzip
+      - tar
+      - curl
+      - papirus-icon-theme
+    state: present
+    update_cache: yes
+
+- name: Create system theme and icon directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /usr/share/themes
+    - /usr/share/icons
+
+- name: Ensure GTK 4.0 config directory exists for root
+  ansible.builtin.file:
+    path: /root/.config/gtk-4.0
+    state: directory
+    mode: '0755'
+
+- name: Ensure GTK 4.0 config directory exists for user
+  become: no
+  ansible.builtin.file:
+    path: ~/.config/gtk-4.0
+    state: directory
+    mode: '0755'
+
+# ----------------- CURSORS -----------------
+
+- name: Check if Bibata Modern Ice cursor is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/Bibata-Modern-Ice
+  register: bibata_installed
+
+- name: Install Bibata Modern Ice cursor
+  ansible.builtin.unarchive:
+    src: https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz
+    dest: /usr/share/icons/
+    remote_src: yes
+    creates: /usr/share/icons/Bibata-Modern-Ice
+  when: not bibata_installed.stat.exists
+
+- name: Check if Volantes Cursors is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/volantes_cursors
+  register: volantes_installed
+
+- name: Clone and build Volantes Cursors
+  block:
+    - name: Clone Volantes Cursors repository
+      ansible.builtin.git:
+        repo: https://github.com/varlesh/volantes-cursors.git
+        dest: /tmp/volantes-cursors
+        depth: 1
+
+    - name: Build Volantes Cursors
+      ansible.builtin.command:
+        cmd: make build
+        chdir: /tmp/volantes-cursors
+      changed_when: true
+
+    - name: Install Volantes Cursors system-wide
+      ansible.builtin.command:
+        cmd: make install
+        chdir: /tmp/volantes-cursors
+      changed_when: true
+
+    - name: Clean up Volantes Cursors build files
+      ansible.builtin.file:
+        path: /tmp/volantes-cursors
+        state: absent
+  when: not volantes_installed.stat.exists
+
+- name: Check if Oreo Cursors is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/oreo_blue_cursors
+  register: oreo_installed
+
+- name: Clone and install Oreo Cursors (pre-compiled)
+  block:
+    - name: Clone Oreo Cursors pre-compiled repository
+      ansible.builtin.git:
+        repo: https://github.com/milkmadedev/oreo-cursors-compiled.git
+        dest: /tmp/oreo-cursors-compiled
+        depth: 1
+
+    - name: Copy Oreo Cursors to system icons directory
+      ansible.builtin.copy:
+        src: "/tmp/oreo-cursors-compiled/{{ item }}"
+        dest: /usr/share/icons/
+        remote_src: yes
+        mode: '0755'
+      loop:
+        - oreo_black_cursors
+        - oreo_blue_cursors
+        - oreo_grey_cursors
+        - oreo_spark_orange_cursors
+        - oreo_pink_cursors
+        - oreo_purple_cursors
+        - oreo_red_cursors
+        - oreo_teal_cursors
+        - oreo_white_cursors
+
+    - name: Clean up Oreo Cursors files
+      ansible.builtin.file:
+        path: /tmp/oreo-cursors-compiled
+        state: absent
+  when: not oreo_installed.stat.exists
+
+# ----------------- GTK & SHELL THEMES -----------------
+
+- name: Check if Transparent Shell Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/TST-Semi-Transparent
+  register: tst_installed
+
+- name: Clone and install Transparent Shell Theme (TST)
+  ansible.builtin.git:
+    repo: https://github.com/metro2222/Rounded-Rectangle-Transparent-Shell-Theme.git
+    dest: /usr/share/themes/TST-Semi-Transparent
+    depth: 1
+  when: not tst_installed.stat.exists
+
+- name: Check if Flat Remix GNOME is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/Flat-Remix
+  register: flat_remix_installed
+
+- name: Clone and install Flat Remix GNOME
+  block:
+    - name: Clone Flat Remix GNOME repository
+      ansible.builtin.git:
+        repo: https://github.com/daniruiz/flat-remix-gnome.git
+        dest: /tmp/flat-remix-gnome
+        depth: 1
+        recursive: no
+
+    - name: Install Flat Remix GNOME system-wide
+      ansible.builtin.command:
+        cmd: make install
+        chdir: /tmp/flat-remix-gnome
+      changed_when: true
+
+    - name: Clean up Flat Remix GNOME files
+      ansible.builtin.file:
+        path: /tmp/flat-remix-gnome
+        state: absent
+  when: not flat_remix_installed.stat.exists
+
+- name: Check if Marble Shell Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/Marble-shell-theme
+  register: marble_installed
+
+- name: Clone and install Marble Shell Theme
+  block:
+    - name: Clone Marble Shell Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/imarkoff/Marble-shell-theme.git
+        dest: /usr/share/themes/Marble-shell-theme
+        depth: 1
+  when: not marble_installed.stat.exists
+
+- name: Check if ChromeOS Shell Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/ChromeOS
+  register: chromeos_installed
+
+- name: Clone and install ChromeOS Shell Theme
+  block:
+    - name: Clone ChromeOS Shell Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/vinceliuice/ChromeOS-theme.git
+        dest: /tmp/chromeos-theme
+        depth: 1
+
+    - name: Install ChromeOS Shell Theme system-wide
+      ansible.builtin.command:
+        cmd: ./install.sh -d /usr/share/themes
+        chdir: /tmp/chromeos-theme
+      changed_when: true
+
+    - name: Clean up ChromeOS Shell Theme files
+      ansible.builtin.file:
+        path: /tmp/chromeos-theme
+        state: absent
+  when: not chromeos_installed.stat.exists
+
+# Note: XONE Catalina (unc926) was removed as the upstream repository is deleted and the theme is incompatible with modern GNOME 40+ (WhiteSur GTK/Shell Theme is installed as the modern equivalent)
+
+- name: Check if Orchis GTK Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/Orchis
+  register: orchis_installed
+
+- name: Clone and install Orchis GTK Theme
+  block:
+    - name: Clone Orchis GTK Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/vinceliuice/Orchis-theme.git
+        dest: /tmp/orchis-theme
+        depth: 1
+
+    - name: Install Orchis GTK Theme system-wide
+      ansible.builtin.command:
+        cmd: ./install.sh -t all -d /usr/share/themes
+        chdir: /tmp/orchis-theme
+      changed_when: true
+
+    - name: Clean up Orchis GTK Theme files
+      ansible.builtin.file:
+        path: /tmp/orchis-theme
+        state: absent
+  when: not orchis_installed.stat.exists
+
+- name: Check if WhiteSur GTK Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/WhiteSur-light
+  register: whitesur_installed
+
+- name: Clone and install WhiteSur GTK Theme
+  block:
+    - name: Clone WhiteSur GTK Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/vinceliuice/WhiteSur-gtk-theme.git
+        dest: /tmp/whitesur-theme
+        depth: 1
+
+    - name: Install WhiteSur GTK Theme system-wide
+      ansible.builtin.command:
+        cmd: ./install.sh -t all -d /usr/share/themes
+        chdir: /tmp/whitesur-theme
+      changed_when: true
+
+    - name: Link WhiteSur GTK4 theme for Libadwaita apps system-wide
+      ansible.builtin.command:
+        cmd: ./tweaks.sh -g
+        chdir: /tmp/whitesur-theme
+      changed_when: true
+
+    - name: Clean up WhiteSur GTK Theme files
+      ansible.builtin.file:
+        path: /tmp/whitesur-theme
+        state: absent
+  when: not whitesur_installed.stat.exists
+
+- name: Check if Material Black GTK Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/GTK-Material-Black-Colors-Desktop
+  register: material_black_installed
+
+- name: Download and install Material Black GTK Theme
+  block:
+    - name: Download Material Black GTK Theme zip
+      ansible.builtin.get_url:
+        url: https://github.com/rtlewis1/GTK/archive/refs/heads/Material-Black-Colors-Desktop.zip
+        dest: /tmp/Material-Black-Colors-Desktop.zip
+        mode: '0644'
+
+    - name: Extract Material Black GTK Theme
+      ansible.builtin.unarchive:
+        src: /tmp/Material-Black-Colors-Desktop.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Install Material Black GTK Theme system-wide
+      ansible.builtin.copy:
+        src: /tmp/GTK-Material-Black-Colors-Desktop
+        dest: /usr/share/themes/
+        remote_src: yes
+        mode: '0755'
+
+    - name: Clean up Material Black files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/Material-Black-Colors-Desktop.zip
+        - /tmp/GTK-Material-Black-Colors-Desktop
+  when: not material_black_installed.stat.exists
+
+- name: Check if Nordic GTK Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/Nordic
+  register: nordic_installed
+
+- name: Clone and install Nordic GTK Theme
+  block:
+    - name: Clone Nordic GTK Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/EliverLara/Nordic.git
+        dest: /usr/share/themes/Nordic
+        depth: 1
+  when: not nordic_installed.stat.exists
+
+- name: Check if Yaru-Colors is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/Yaru-Blue
+  register: yaru_colors_installed
+
+- name: Clone and install Yaru-Colors GTK and Icon Themes
+  block:
+    - name: Clone Yaru-Colors repository
+      ansible.builtin.git:
+        repo: https://github.com/Jannomag/Yaru-Colors.git
+        dest: /tmp/yaru-colors
+        depth: 1
+
+    - name: Install Yaru-Colors themes system-wide
+      ansible.builtin.copy:
+        src: "/tmp/yaru-colors/Themes/{{ item }}"
+        dest: /usr/share/themes/
+        remote_src: yes
+        mode: '0755'
+      loop:
+        - Yaru-Aqua
+        - Yaru-Blue
+        - Yaru-Brown
+        - Yaru-Deepblue
+        - Yaru-Amber
+        - Yaru-Green
+        - Yaru-Grey
+        - Yaru-MATE
+        - Yaru-Orange
+        - Yaru-Pink
+        - Yaru-Purple
+        - Yaru-Red
+        - Yaru-Yellow
+
+    - name: Install Yaru-Colors icons system-wide
+      ansible.builtin.copy:
+        src: "/tmp/yaru-colors/Icons/{{ item }}"
+        dest: /usr/share/icons/
+        remote_src: yes
+        mode: '0755'
+      loop:
+        - Yaru-Aqua
+        - Yaru-Blue
+        - Yaru-Brown
+        - Yaru-Deepblue
+        - Yaru-Amber
+        - Yaru-Green
+        - Yaru-Grey
+        - Yaru-MATE
+        - Yaru-Orange
+        - Yaru-Pink
+        - Yaru-Purple
+        - Yaru-Red
+        - Yaru-Yellow
+
+    - name: Clean up Yaru-Colors files
+      ansible.builtin.file:
+        path: /tmp/yaru-colors
+        state: absent
+  when: not yaru_colors_installed.stat.exists
+
+- name: Check if VALYRIAN Molten Steel GTK Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/themes/archcraft-gtk-theme-valyrian
+  register: valyrian_installed
+
+- name: Clone and install VALYRIAN Molten Steel Theme
+  block:
+    - name: Create temporary directory for sparse checkout
+      ansible.builtin.file:
+        path: /tmp/archcraft-themes-sparse
+        state: directory
+        mode: '0755'
+
+    - name: Initialize Git for sparse checkout
+      ansible.builtin.command:
+        cmd: git init
+        chdir: /tmp/archcraft-themes-sparse
+      changed_when: true
+
+    - name: Add remote origin for archcraft-themes
+      ansible.builtin.command:
+        cmd: git remote add -f origin https://github.com/archcraft-os/archcraft-themes.git
+        chdir: /tmp/archcraft-themes-sparse
+      changed_when: true
+
+    - name: Enable sparse checkout
+      ansible.builtin.command:
+        cmd: git config core.sparseCheckout true
+        chdir: /tmp/archcraft-themes-sparse
+      changed_when: true
+
+    - name: Configure sparse checkout path
+      ansible.builtin.copy:
+        dest: /tmp/archcraft-themes-sparse/.git/info/sparse-checkout
+        content: |
+          archcraft-gtk-theme-valyrian/
+        mode: '0644'
+
+    - name: Pull valyrian theme
+      ansible.builtin.command:
+        cmd: git pull origin main
+        chdir: /tmp/archcraft-themes-sparse
+      changed_when: true
+
+    - name: Install Valyrian Theme system-wide
+      ansible.builtin.copy:
+        src: /tmp/archcraft-themes-sparse/archcraft-gtk-theme-valyrian/files/
+        dest: /usr/share/themes/
+        remote_src: yes
+        mode: '0755'
+
+    - name: Clean up temporary sparse clone
+      ansible.builtin.file:
+        path: /tmp/archcraft-themes-sparse
+        state: absent
+  when: not valyrian_installed.stat.exists
+
+
+# ----------------- ICON THEMES -----------------
+
+- name: Check if Candy Icons is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/candy-icons
+  register: candy_installed
+
+- name: Clone and install Candy Icons
+  block:
+    - name: Clone Candy Icons repository
+      ansible.builtin.git:
+        repo: https://github.com/EliverLara/candy-icons.git
+        dest: /usr/share/icons/candy-icons
+        depth: 1
+  when: not candy_installed.stat.exists
+
+- name: Check if Kora Icon Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/kora
+  register: kora_installed
+
+- name: Clone and install Kora Icon Theme
+  block:
+    - name: Clone Kora Icon Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/bikass/kora.git
+        dest: /tmp/kora-icons
+        depth: 1
+
+    - name: Copy Kora Icons system-wide
+      ansible.builtin.copy:
+        src: "/tmp/kora-icons/{{ item }}"
+        dest: /usr/share/icons/
+        remote_src: yes
+        mode: '0755'
+      loop:
+        - kora
+        - kora-pgrey
+
+    - name: Clean up Kora Icon files
+      ansible.builtin.file:
+        path: /tmp/kora-icons
+        state: absent
+  when: not kora_installed.stat.exists
+
+- name: Check if Tela Icon Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/Tela
+  register: tela_installed
+
+- name: Clone and install Tela Icon Theme
+  block:
+    - name: Clone Tela Icon Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/vinceliuice/Tela-icon-theme.git
+        dest: /tmp/tela-icons
+        depth: 1
+
+    - name: Install Tela Icon Theme system-wide
+      ansible.builtin.command:
+        cmd: ./install.sh -d /usr/share/icons
+        chdir: /tmp/tela-icons
+      changed_when: true
+
+    - name: Clean up Tela Icon files
+      ansible.builtin.file:
+        path: /tmp/tela-icons
+        state: absent
+  when: not tela_installed.stat.exists
+
+- name: Check if Reversal Icon Theme is installed
+  ansible.builtin.stat:
+    path: /usr/share/icons/Reversal
+  register: reversal_installed
+
+- name: Clone and install Reversal Icon Theme
+  block:
+    - name: Clone Reversal Icon Theme repository
+      ansible.builtin.git:
+        repo: https://github.com/yeyushengfan258/Reversal-icon-theme.git
+        dest: /tmp/reversal-icons
+        depth: 1
+
+    - name: Install Reversal Icon Theme system-wide
+      ansible.builtin.command:
+        cmd: ./install.sh -d /usr/share/icons
+        chdir: /tmp/reversal-icons
+      changed_when: true
+
+    - name: Clean up Reversal Icon files
+      ansible.builtin.file:
+        path: /tmp/reversal-icons
+        state: absent
+  when: not reversal_installed.stat.exists
+
+- name: Update system-wide icon and pixbuf caches
+  ansible.builtin.shell:
+    cmd: |
+      gdk-pixbuf-query-loaders --update-cache
+      for theme in candy-icons kora Tela Reversal Yaru-Aqua Yaru-Blue Yaru-Grey; do
+        if [ -d "/usr/share/icons/$theme" ]; then
+          gtk-update-icon-cache -f "/usr/share/icons/$theme"
+        fi
+      done
+  changed_when: true
+  failed_when: false

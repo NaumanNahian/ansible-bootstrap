@@ -1,0 +1,13 @@
+---
+# Variables specific to gaming-ai
+
+apt_packages_specific:
+  - easyeffects
+  - steam
+
+snap_packages_specific: []
+
+classic_snap_packages_specific: []
+
+# Starship prompt preset
+starship_preset: gruvbox-rainbow

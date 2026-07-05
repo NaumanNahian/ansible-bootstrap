@@ -1,0 +1,71 @@
+---
+# Common variables for all PC types
+
+apt_packages_common:
+  - vim
+  - tmux
+  - htop
+  - curl
+  - git
+  - build-essential
+  - python3-pip
+  - python3-venv
+  - shellcheck
+  - duf
+  - neowofetch
+  - ansible
+  - ripgrep
+  - fd-find
+  - unzip
+  - virt-viewer
+  - bat
+  - btop
+  - fastfetch
+  - eza
+  - fzf
+  - zoxide
+  - tealdeer
+  - gnome-tweaks
+  - gnome-shell-extensions
+  - wireguard
+  - audacious
+  - gimp
+  - inkscape
+  - darktable
+  - audacious
+  - webcamoid
+  - gparted
+  - timeshift
+  - golang
+  - luarocks
+  - tcpdump
+  - nmap
+  - wireshark
+  - mdp
+  - wireguard
+
+snap_packages_common:
+  - name: jq
+  - name: yq
+  - name: postman
+  - name: firefox
+  - name: chromium
+  - name: shotcut
+  - name: mpv
+  - name: joplin-desktop
+
+classic_snap_packages_common:
+  - name: nvim
+  - name: chezmoi
+  - name: kubectl
+
+# Nerd Fonts to install
+nerd_fonts:
+  - Iosevka
+  - JetBrainsMono
+  - FiraCode
+
+# Secrets for Docker Compose Stacks (Reads from .env, falls back to safe examples)
+arcane_encryption_key: "{{ lookup('ansible.builtin.ini', 'arcane_encryption_key', type='properties', file='.env', default='9a7c36f2b80a1d4e5f60718293a4b5c6d7e8f9011234567890abcdef12345678') }}"
+arcane_jwt_secret: "{{ lookup('ansible.builtin.ini', 'arcane_jwt_secret', type='properties', file='.env', default='a1b2c3d4e5f60718293a4b5c6d7e8f901234567890abcdef1234567890abcdef') }}"
+open_webui_secret_key: "{{ lookup('ansible.builtin.ini', 'open_webui_secret_key', type='properties', file='.env', default='super-secret-token-change-me-in-production') }}"

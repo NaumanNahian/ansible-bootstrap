@@ -1,0 +1,391 @@
+---
+- name: Ansible Bootstrap setup
+  hosts: localhost
+  connection: local
+  become: yes
+
+  pre_tasks:
+    - name: Validate pc_type variable is specified and valid
+      ansible.builtin.assert:
+        that:
+          - pc_type is defined
+          - pc_type in ['office-pc', 'gaming-ai', 'home-pc']
+        fail_msg: "You must specify pc_type as an extra var. Example: -e 'pc_type=home-pc' (choices: office-pc, gaming-ai, home-pc)"
+
+    - name: Load common configuration variables
+      ansible.builtin.include_vars:
+        file: vars/common.yml
+
+    - name: Load PC-specific variables
+      ansible.builtin.include_vars:
+        file: "vars/{{ pc_type }}.yml"
+
+    - name: Check if i386 architecture is added for gaming PC
+      ansible.builtin.command:
+        cmd: dpkg --print-foreign-architectures
+      register: foreign_archs
+      changed_when: false
+      when: pc_type == 'gaming-ai' and ansible_facts['os_family'] == "Debian"
+
+    - name: Add i386 architecture for gaming PC
+      ansible.builtin.command:
+        cmd: dpkg --add-architecture i386
+      when: pc_type == 'gaming-ai' and ansible_facts['os_family'] == "Debian" and 'i386' not in foreign_archs.stdout
+      register: i386_added
+
+    - name: Update apt cache if i386 architecture was added
+      ansible.builtin.apt:
+        update_cache: yes
+      when: pc_type == 'gaming-ai' and ansible_facts['os_family'] == "Debian" and i386_added is changed
+
+  tasks:
+    - name: Set system hostname to match PC type
+      ansible.builtin.hostname:
+        name: "{{ pc_type }}"
+
+    - name: Execute Debian/Ubuntu tasks
+      when: ansible_facts['os_family'] == "Debian"
+      block:
+        - name: Update apt cache
+          ansible.builtin.apt:
+            update_cache: yes
+          changed_when: false
+
+        - name: Download Google Chrome
+          ansible.builtin.get_url:
+            url: https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            dest: /tmp/google-chrome-stable_current_amd64.deb
+            mode: '0644'
+
+        - name: Install Google Chrome
+          ansible.builtin.apt:
+            deb: /tmp/google-chrome-stable_current_amd64.deb
+            state: present
+
+        - name: Install apt packages
+          ansible.builtin.apt:
+            name: "{{ apt_packages_common + (apt_packages_specific | default([])) }}"
+            state: present
+
+        - name: Install snap packages
+          ansible.builtin.command:
+            cmd: "snap install {{ item.name }}"
+          loop: "{{ snap_packages_common + (snap_packages_specific | default([])) }}"
+          register: snap_install
+          changed_when: "'already installed' not in snap_install.stderr and 'is already installed' not in snap_install.stdout"
+          failed_when: snap_install.rc != 0 and 'already installed' not in snap_install.stderr and 'is already installed' not in snap_install.stdout
+
+        - name: Install classic snap packages
+          ansible.builtin.command:
+            cmd: "snap install {{ item.name }} --classic"
+          loop: "{{ classic_snap_packages_common + (classic_snap_packages_specific | default([])) }}"
+          register: snap_classic_install
+          changed_when: "'already installed' not in snap_classic_install.stderr and 'is already installed' not in snap_classic_install.stdout"
+          failed_when: snap_classic_install.rc != 0 and 'already installed' not in snap_classic_install.stderr and 'is already installed' not in snap_classic_install.stdout
+
+        - name: Install Brave Browser
+          ansible.builtin.shell:
+            cmd: curl -fsS https://dl.brave.com/install.sh | sh
+            creates: /usr/bin/brave-browser
+
+        - name: Create /etc/apt/keyrings directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
+
+        - name: Download Docker GPG key
+          ansible.builtin.get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /etc/apt/keyrings/docker.asc
+            mode: '0644'
+            force: yes
+
+        - name: Add Docker repository
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+            state: present
+            filename: docker
+
+        - name: Install Docker packages
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-compose-plugin
+            state: present
+            update_cache: yes
+
+        - name: Ensure docker system group exists
+          ansible.builtin.group:
+            name: docker
+            state: present
+
+        - name: Add invoking user to docker group for passwordless docker execution
+          ansible.builtin.user:
+            name: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+            groups: docker
+            append: yes
+          when: ansible_facts['env']['SUDO_USER'] is defined or ansible_facts['user_id'] != 'root'
+
+        - name: Download Visual Studio Code GPG key
+          ansible.builtin.get_url:
+            url: https://packages.microsoft.com/keys/microsoft.asc
+            dest: /etc/apt/keyrings/vscode.asc
+            mode: '0644'
+            force: yes
+
+        - name: Add Visual Studio Code repository
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/vscode.asc] https://packages.microsoft.com/repos/code stable main"
+            state: present
+            filename: vscode
+
+        - name: Install Visual Studio Code
+          ansible.builtin.apt:
+            name: code
+            state: present
+            update_cache: yes
+
+        - name: Download NodeSource GPG key
+          ansible.builtin.get_url:
+            url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+            dest: /etc/apt/keyrings/nodesource.asc
+            mode: '0644'
+            force: yes
+
+        - name: Add NodeSource repository
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_22.x nodistro main"
+            state: present
+            filename: nodesource
+
+        - name: Install Node.js and npm
+          ansible.builtin.apt:
+            name: nodejs
+            state: present
+            update_cache: yes
+
+    - name: Ensure user fonts directory exists
+      become: no
+      ansible.builtin.file:
+        path: "~/.local/share/fonts"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure specific font directories exist
+      become: no
+      ansible.builtin.file:
+        path: "~/.local/share/fonts/{{ item }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ nerd_fonts }}"
+
+    - name: Download and extract Nerd Fonts
+      become: no
+      ansible.builtin.unarchive:
+        src: "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/{{ item }}.tar.xz"
+        dest: "~/.local/share/fonts/{{ item }}"
+        remote_src: yes
+        creates: "~/.local/share/fonts/{{ item }}/{{ item }}NerdFont-Regular.ttf"
+      loop: "{{ nerd_fonts }}"
+      register: nerd_fonts_extracted
+
+    - name: Update font cache
+      become: no
+      ansible.builtin.command:
+        cmd: fc-cache -f
+      changed_when: true
+      when: nerd_fonts_extracted.results | selectattr('changed') | list | length > 0
+
+    - name: Install Starship
+      ansible.builtin.shell:
+        cmd: curl -sS https://starship.rs/install.sh | sh -s -- -y
+        creates: /usr/local/bin/starship
+
+    - name: Ensure user .config directory exists
+      become: no
+      ansible.builtin.file:
+        path: ~/.config
+        state: directory
+        mode: '0755'
+
+    - name: Configure Starship
+      become: no
+      ansible.builtin.shell:
+        cmd: "starship preset {{ starship_preset }} -o ~/.config/starship.toml"
+        creates: ~/.config/starship.toml
+
+    - name: Clone amix/vimrc
+      become: no
+      ansible.builtin.git:
+        repo: https://github.com/amix/vimrc.git
+        dest: ~/.vim_runtime
+        depth: 1
+
+    - name: Install amix/vimrc
+      become: no
+      ansible.builtin.shell:
+        cmd: sh ~/.vim_runtime/install_awesome_vimrc.sh
+        creates: ~/.vimrc
+
+    - name: Check if LazyVim is installed
+      become: no
+      ansible.builtin.stat:
+        path: ~/.config/nvim/init.lua
+      register: lazyvim_installed
+
+    - name: Clone LazyVim starter
+      become: no
+      ansible.builtin.git:
+        repo: https://github.com/LazyVim/starter
+        dest: ~/.config/nvim
+        depth: 1
+      when: not lazyvim_installed.stat.exists
+
+    - name: Remove .git from LazyVim configuration
+      become: no
+      ansible.builtin.file:
+        path: ~/.config/nvim/.git
+        state: absent
+      when: not lazyvim_installed.stat.exists
+
+    - name: Ensure tmux plugins directory exists
+      become: no
+      ansible.builtin.file:
+        path: ~/.tmux/plugins
+        state: directory
+        mode: '0755'
+
+    - name: Clone Tmux Plugin Manager (TPM)
+      become: no
+      ansible.builtin.git:
+        repo: https://github.com/tmux-plugins/tpm
+        dest: ~/.tmux/plugins/tpm
+        depth: 1
+
+    - name: Configure Tmux with TPM and Catppuccin theme
+      become: no
+      ansible.builtin.copy:
+        dest: ~/.tmux.conf
+        content: |
+          # Options to make tmux more pleasant
+          set -g mouse on
+          set -g default-terminal "tmux-256color"
+
+          # Configure the Catppuccin plugin
+          set -g @catppuccin_flavor "mocha" # latte, frappe, macchiato, or mocha
+          set -g @catppuccin_window_status_style "rounded"
+
+          # Leave left side empty
+          set -g status-left ""
+
+          # Configure the right status bar (modules)
+          set -g status-right-length 100
+          set -g status-right ""
+          set -g status-right "#{E:@catppuccin_status_application}"
+          set -g status-right "#{E:@catppuccin_status_session}"
+          set -g status-right "#{E:@catppuccin_status_uptime}"
+
+          # List of plugins managed by TPM
+          set -g @plugin 'tmux-plugins/tpm'
+          set -g @plugin 'catppuccin/tmux#v2.1.1'
+
+          # Initialize TMUX plugin manager (keep this at the very bottom of tmux.conf)
+          run '~/.tmux/plugins/tpm/tpm'
+        mode: '0644'
+        force: no
+
+    - name: Run TPM plugin installation script
+      become: no
+      ansible.builtin.shell:
+        cmd: |
+          tmux start-server
+          tmux new-session -d
+          sleep 1
+          ~/.tmux/plugins/tpm/bin/install_plugins
+          tmux kill-server
+        executable: /bin/bash
+        creates: ~/.tmux/plugins/tmux
+
+    - name: Set up authorized SSH key for user
+      become: yes
+      ansible.posix.authorized_key:
+        user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+        state: present
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMvZPsYrvy/bk2FQ5stRBiIQIzrIY7mkpeLeVIN5Jkve noman"
+
+    - name: Install Pi AI Coding Agent (pi.dev)
+      become: no
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://pi.dev/install.sh | sh
+        creates: ~/.pi/bin/pi
+
+    - name: Check if Chezmoi is already initialized
+      become: no
+      ansible.builtin.stat:
+        path: ~/.local/share/chezmoi
+      register: chezmoi_dir
+
+    - name: Initialize Chezmoi with user dotfiles
+      become: no
+      ansible.builtin.shell:
+        cmd: /snap/bin/chezmoi init --apply git@github.com:NaumanNahian/dotfiles.git
+      when: not chezmoi_dir.stat.exists
+
+    - name: Update Chezmoi dotfiles if already initialized
+      become: no
+      ansible.builtin.shell:
+        cmd: /snap/bin/chezmoi update
+      when: chezmoi_dir.stat.exists
+      changed_when: true
+
+    - name: Initialize and update tealdeer (tldr) local page cache
+      become: no
+      ansible.builtin.command:
+        cmd: tldr --update
+      changed_when: true
+      failed_when: false
+
+    - name: Execute PC-specific tasks
+      ansible.builtin.include_tasks:
+        file: "tasks/{{ pc_type }}.yml"
+
+    - name: Deploy Docker Compose Apps (Arcane, Ollama, Open WebUI)
+      ansible.builtin.include_tasks:
+        file: tasks/docker-apps.yml
+
+    - name: Download and install personalization themes, cursors, and icons
+      ansible.builtin.include_tasks:
+        file: tasks/themes-icons.yml
+
+    - name: Ensure theme packages are installed
+      ansible.builtin.apt:
+        name:
+          - orchis-gtk-theme
+          - numix-gtk-theme
+          - hydrapaper
+          - gnome-shell-extension-user-theme
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Ensure user extensions are allowed
+      become: no
+      ansible.builtin.command:
+        cmd: gsettings set org.gnome.shell disable-user-extensions false
+      changed_when: false
+      failed_when: false
+
+    - name: Enable user-theme GNOME extension via gsettings
+      become: no
+      ansible.builtin.shell:
+        cmd: |
+          python3 -c "import subprocess, ast;
+          curr = subprocess.check_output(['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions']).decode().strip();
+          lst = ast.literal_eval(curr) if curr and curr != '@as []' else [];
+          if 'user-theme@gnome-shell-extensions.gcampax.github.com' not in lst:
+              lst.append('user-theme@gnome-shell-extensions.gcampax.github.com');
+              subprocess.check_call(['gsettings', 'set', 'org.gnome.shell', 'enabled-extensions', str(lst)])"
+      changed_when: false
+      failed_when: false

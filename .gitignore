@@ -1,0 +1,7 @@
+# Ignore local secrets and environment files
+.env
+
+# Ignore temporary/compiled Ansible files
+*.retry
+*.log
+.ansible/

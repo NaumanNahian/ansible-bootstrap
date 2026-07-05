@@ -1,0 +1,43 @@
+---
+# Specific tasks for office-pc
+
+- name: Create Office Documents directory
+  become: no
+  ansible.builtin.file:
+    path: "~/Office_Documents"
+    state: directory
+    mode: '0755'
+
+- name: Set up Defguard Desktop Client (Office VPN)
+  when: ansible_facts['os_family'] == "Debian"
+  block:
+    - name: Download Defguard GPG key
+      ansible.builtin.get_url:
+        url: https://apt.defguard.net/defguard.asc
+        dest: /etc/apt/keyrings/defguard.asc
+        mode: '0644'
+        force: yes
+
+    - name: Add Defguard repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/defguard.asc] https://apt.defguard.net/ trixie release-2.0"
+        state: present
+        filename: defguard
+
+    - name: Install Defguard Client
+      ansible.builtin.apt:
+        name: defguard-client
+        state: present
+        update_cache: yes
+
+    - name: Ensure defguard system group exists
+      ansible.builtin.group:
+        name: defguard
+        state: present
+
+    - name: Add invoking user to defguard group for WireGuard interface management
+      ansible.builtin.user:
+        name: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+        groups: defguard
+        append: yes
+      when: ansible_facts['env']['SUDO_USER'] is defined or ansible_facts['user_id'] != 'root'

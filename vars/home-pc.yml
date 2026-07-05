@@ -1,0 +1,15 @@
+---
+# Variables specific to home-pc
+
+apt_packages_specific:
+  - tlp
+  - tlp-rdw
+
+snap_packages_specific: []
+
+classic_snap_packages_specific:
+  - name: ghostty
+  - name: aws-cli
+
+# Starship prompt preset
+starship_preset: catppuccin-powerline

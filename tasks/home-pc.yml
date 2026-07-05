@@ -1,0 +1,9 @@
+---
+# Specific tasks for home-pc
+
+- name: Ensure TLP power management service is enabled
+  ansible.builtin.systemd:
+    name: tlp
+    enabled: yes
+    state: started
+  failed_when: false 
